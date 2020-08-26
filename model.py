@@ -14,11 +14,17 @@ class FBSConv2d(nn.Module):
         self.sparsity_ratio = sparsity_ratio
 
         if fbs:
-            raise NotImplementedError()
+            # set self.bn weight not trainable
+            self.bn.weight.requires_grad = False
+            self.gl = nn.Linear(in_channels, out_channels, bias=True)
+            # SET GL layer's bias as 1 and weight as he initialization
+            nn.init.kaiming_uniform_(self.gl.weight, mode='fan_out', nonlinearity='relu')
+            nn.init.constant_(self.gl.bias, 1.0)
 
     def forward(self, x):
         if self.fbs:
-            raise NotImplementedError()
+            x = self.fbs_forward(x)
+            return x
         else:
             x = self.original_forward(x)
             return x
@@ -30,8 +36,14 @@ class FBSConv2d(nn.Module):
         return x
 
     def fbs_forward(self, x):
-        raise NotImplementedError()
-
+        scale = global_avgpool2d(x)
+        scale = F.relu(self.gl(scale))
+        scale = winner_take_all(scale, self.sparsity_ratio) 
+        x = self.conv(x)
+        x = self.bn(x)
+        x = torch.mul(scale.unsqueeze(2).unsqueeze(3), x)
+        x = F.relu(x)
+        return x, torch.norm(scale, p=1)
 
 class CifarNet(nn.Module):
     def __init__(self, fbs=False, sparsity_ratio=1.0):
@@ -45,11 +57,19 @@ class CifarNet(nn.Module):
         self.layer6 = FBSConv2d(192, 192, 3, stride=1, padding=1, fbs=fbs, sparsity_ratio=sparsity_ratio)
         self.layer7 = FBSConv2d(192, 192, 3, stride=1, padding=1, fbs=fbs, sparsity_ratio=sparsity_ratio)
 
+        self.fbs = fbs
         self.pool = nn.AvgPool2d(8)
         self.fc = nn.Linear(192, 10)
 
-    # TODO: get g for each layer and calculate lasso
     def forward(self, x):
+        if self.fbs:
+            x, g = self.fbs_forward(x)
+            return x, g
+        else:
+            x = self.original_forward(x)
+            return x
+        
+    def original_forward(self, x):
         x = self.layer0(x)
         x = self.layer1(x)
         x = self.layer2(x)
@@ -65,3 +85,17 @@ class CifarNet(nn.Module):
         x = self.fc(x)
 
         return x
+
+    def fbs_forward(self, x):
+        g = 0 
+        layers = [self.layer0, self.layer1, self.layer2, self.layer3, self.layer4, self.layer5, self.layer6, self.layer7]
+        for layer in layers:
+            x, tmp = layer(x)
+            g += tmp
+
+        x = self.pool(x)
+        x = torch.flatten(x, 1)
+        
+        x = self.fc(x)
+
+        return x, g

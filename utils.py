@@ -30,10 +30,14 @@ def str2bool(v):
     else:
         raise argparse.ArgumentTypeError('Boolean value expected.')
 
-
 def global_avgpool2d(x):
-    raise NotImplementedError()
-
+    x = x.view(x.shape[0], x.shape[1], -1)
+    return x.mean(dim=2)
 
 def winner_take_all(x, sparsity_ratio):
-    raise NotImplementedError()
+    assert sparsity_ratio >= 0.0 and sparsity_ratio <=1.0
+    n_channels = x.size()[1]
+    k = round(n_channels * sparsity_ratio)
+    indices = x.topk(k, dim=1)[1]
+    x = torch.zeros_like(x).scatter_(1, indices, x)
+    return x

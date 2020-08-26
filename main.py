@@ -31,7 +31,7 @@ parser.add_argument(
 parser.add_argument(
     '--epochs',
     type=int,
-    default=1000
+    default=500
 )
 parser.add_argument(
     '--batch_size',
@@ -72,9 +72,24 @@ utils.set_seed(args.seed)
 train_loader, test_loader = get_loader(args.batch_size, args.num_worker)
 model = CifarNet(fbs=args.fbs, sparsity_ratio=args.sparsity_ratio).cuda()
 criterion = nn.CrossEntropyLoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+p = list(filter(lambda x: x.requires_grad, model.parameters()))
+optimizer = torch.optim.Adam(p, lr=args.lr)
 
-# TODO: initialize current model parameters with previous model parameters
+# initialize current model parameters with previous model parameters
+if args.fbs:
+    if args.sparsity_ratio == 1.0:
+        prev_modelpath = f'{args.ckpt_path}/best_{False}_{args.sparsity_ratio}.pt'
+    else:
+        prev_modelpath = f'{args.ckpt_path}/best_{args.fbs}_{args.sparsity_ratio+0.1}.pt'
+    state_dict = torch.load(prev_modelpath)
+    keys = state_dict.keys()
+    if args.sparsity_ratio == 1.0:
+        keys = list(filter(lambda x:x.endswith("conv.weight") or x.endswith("conv.bias"), keys))
+    else:
+        keys = list(filter(lambda x:x.endswith("weight") or x.endswith("bias"), keys))
+   
+    for key in keys:
+        model.state_dict()[key].copy_(state_dict[key])
 
 best_acc = 0.
 for epoch in range(1, args.epochs+1):
@@ -90,9 +105,13 @@ for epoch in range(1, args.epochs+1):
         img_batch = img_batch.cuda()
         lb_batch = lb_batch.cuda()
 
-        pred_batch = model(img_batch)
+        if args.fbs:
+            pred_batch, g = model(img_batch)
+        else:
+            pred_batch = model(img_batch)
+            g = 0 
 
-        loss = criterion(pred_batch, lb_batch)
+        loss = criterion(pred_batch, lb_batch) + args.lasso_lambda * g 
 
         optimizer.zero_grad()
         loss.backward()
@@ -117,9 +136,13 @@ for epoch in range(1, args.epochs+1):
             img_batch = img_batch.cuda()
             lb_batch = lb_batch.cuda()
 
-            pred_batch = model(img_batch)
+            if args.fbs:
+                pred_batch, g = model(img_batch)
+            else:
+                pred_batch = model(img_batch)
+                g = 0
 
-            loss = criterion(pred_batch, lb_batch)
+            loss = criterion(pred_batch, lb_batch) + args.lasso_lambda * g 
 
             test_loss += loss.item()
             _, pred_lb_batch = pred_batch.max(dim=1)
@@ -131,6 +154,7 @@ for epoch in range(1, args.epochs+1):
     
     if test_acc > best_acc:
         best_acc = test_acc
+        print('test acc %f. test loss %f' %(test_acc, test_loss))
         torch.save(model.state_dict(), f'{args.ckpt_path}/best_{args.fbs}_{args.sparsity_ratio}.pt')
     
     with open(f'{args.ckpt_path}/train_log_{args.fbs}_{args.sparsity_ratio}.tsv', 'a') as log_file:

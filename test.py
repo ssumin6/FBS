@@ -40,7 +40,6 @@ parser.add_argument(
 
 args = parser.parse_args()
 
-
 train_loader, test_loader = get_loader(args.batch_size, args.num_worker)
 model = CifarNet(fbs=args.fbs, sparsity_ratio=args.sparsity_ratio).cuda()
 
@@ -56,7 +55,10 @@ with torch.no_grad():
         img_batch = img_batch.cuda()
         lb_batch = lb_batch.cuda()
 
-        pred_batch = model(img_batch)
+        if args.fbs: 
+            pred_batch, _ = model(img_batch)
+        else:
+            pred_batch = model(img_batch)
 
         _, pred_lb_batch = pred_batch.max(dim=1)
         total_num += lb_batch.shape[0]
