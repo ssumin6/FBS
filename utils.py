@@ -39,5 +39,7 @@ def winner_take_all(x, sparsity_ratio):
     n_channels = x.size()[1]
     k = round(n_channels * sparsity_ratio)
     indices = x.topk(k, dim=1)[1]
-    x = torch.zeros_like(x).scatter_(1, indices, x)
+    mask = torch.zeros_like(x).scatter_(1, indices, 1)
+    x = x * mask
+    
     return x

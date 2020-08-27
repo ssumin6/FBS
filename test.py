@@ -43,7 +43,7 @@ args = parser.parse_args()
 train_loader, test_loader = get_loader(args.batch_size, args.num_worker)
 model = CifarNet(fbs=args.fbs, sparsity_ratio=args.sparsity_ratio).cuda()
 
-state_dict = torch.load(f'{args.ckpt_path}/backup/best_{args.fbs}_{args.sparsity_ratio}.pt')
+state_dict = torch.load(f'{args.ckpt_path}/best_{args.fbs}_{args.sparsity_ratio}.pt')
 model.load_state_dict(state_dict)
 
 with torch.no_grad():
