@@ -11,7 +11,6 @@ Dynamic Channel Pruning: Feature Boosting and Suppression (ICLR'19) Implementati
 
 I implement the training code. However output-sparsity during the inference time and MACs calculation isn't implemented in this code. Results appended in this ReadMe code are calculated using code [2].
 
-* **results**
 ![Result](./fig3a.png)
 
 * **command**  
